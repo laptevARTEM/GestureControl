@@ -52,10 +52,6 @@ def main():
     cap_width = args.width
     cap_height = args.height
 
-    use_static_image_mode = args.use_static_image_mode
-    min_detection_confidence = args.min_detection_confidence
-    min_tracking_confidence = args.min_tracking_confidence
-
     use_brect = True
 
     gesture_control_dict = make_gesture_control_dict()
@@ -65,10 +61,7 @@ def main():
 
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(
-        static_image_mode=use_static_image_mode,
         max_num_hands=1,
-        min_detection_confidence=min_detection_confidence,
-        min_tracking_confidence=min_tracking_confidence,
     )
 
     keypoint_classifier = KeyPointClassifier()

@@ -448,14 +448,12 @@ def do_volume_increase():
     mixer = alsaaudio.Mixer()
     newvolume = mixer.getvolume()[0] + 1 if mixer.getvolume()[0] + 1 <= 100 else 100
     mixer.setvolume(newvolume)
-    mixer.setmute(0)
 
 
 def do_volume_decrease():
     mixer = alsaaudio.Mixer()
     newvolume = mixer.getvolume()[0] - 1 if mixer.getvolume()[0] - 1 >= 0 else 0
     mixer.setvolume(newvolume)
-    mixer.setmute(0)
 
 
 def do_reboot():

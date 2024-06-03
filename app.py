@@ -82,15 +82,15 @@ def main():
         ]
 
     prev_time = 0
-    duration = 0.1  # seconds
-    freq = 500  # Hz
+    duration = 0.1
+    freq = 500
     beep = lambda: os.system('play -nq -t alsa synth {} sine {}'.format(duration, freq))
     n = 0
 
     while True:
 
         key = cv.waitKey(10)
-        if key == 27:  # ESC
+        if key == 27:
             break
 
         ret, image = cap.read()

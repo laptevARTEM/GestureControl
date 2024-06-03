@@ -12,10 +12,7 @@ import cv2 as cv
 import numpy as np
 import mediapipe as mp
 
-from collections import deque
-from collections import Counter
 from model import KeyPointClassifier
-from model import PointHistoryClassifier
 
 
 def get_args():
@@ -24,6 +21,16 @@ def get_args():
     parser.add_argument("--device", type=int, default=0)
     parser.add_argument("--width", help='cap width', type=int, default=960)
     parser.add_argument("--height", help='cap height', type=int, default=540)
+
+    parser.add_argument('--use_static_image_mode', action='store_true')
+    parser.add_argument("--min_detection_confidence",
+                        help='min_detection_confidence',
+                        type=float,
+                        default=0.7)
+    parser.add_argument("--min_tracking_confidence",
+                        help='min_tracking_confidence',
+                        type=int,
+                        default=0.5)
 
     args = parser.parse_args()
 
@@ -39,18 +46,16 @@ def make_gesture_control_dict():
     }
 
 
-def make_test(n):
-    for i in range(n):
-        print('tested')
-        time.sleep(1)
-
-
 def main():
     args = get_args()
 
     cap_device = args.device
     cap_width = args.width
     cap_height = args.height
+
+    use_static_image_mode = args.use_static_image_mode
+    min_detection_confidence = args.min_detection_confidence
+    min_tracking_confidence = args.min_tracking_confidence
 
     use_brect = True
 
@@ -61,12 +66,13 @@ def main():
 
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(
+        static_image_mode=use_static_image_mode,
         max_num_hands=1,
+        min_detection_confidence=min_detection_confidence,
+        min_tracking_confidence=min_tracking_confidence,
     )
 
     keypoint_classifier = KeyPointClassifier()
-
-    point_history_classifier = PointHistoryClassifier()
 
     with open('model/keypoint_classifier/keypoint_classifier_label.csv',
               encoding='utf-8-sig') as f:
@@ -74,18 +80,6 @@ def main():
         keypoint_classifier_labels = [
             row[0] for row in keypoint_classifier_labels
         ]
-    with open(
-            'model/point_history_classifier/point_history_classifier_label.csv',
-            encoding='utf-8-sig') as f:
-        point_history_classifier_labels = csv.reader(f)
-        point_history_classifier_labels = [
-            row[0] for row in point_history_classifier_labels
-        ]
-
-    history_length = 16
-    point_history = deque(maxlen=history_length)
-
-    finger_gesture_history = deque(maxlen=history_length)
 
     prev_time = 0
     duration = 0.1  # seconds
@@ -121,24 +115,8 @@ def main():
 
                 pre_processed_landmark_list = pre_process_landmark(
                     landmark_list)
-                pre_processed_point_history_list = pre_process_point_history(
-                    debug_image, point_history)
 
                 hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
-                if hand_sign_id == 2:
-                    point_history.append(landmark_list[8])
-                else:
-                    point_history.append([0, 0])
-
-                finger_gesture_id = 0
-                point_history_len = len(pre_processed_point_history_list)
-                if point_history_len == (history_length * 2):
-                    finger_gesture_id = point_history_classifier(
-                        pre_processed_point_history_list)
-
-                finger_gesture_history.append(finger_gesture_id)
-                most_common_fg_id = Counter(
-                    finger_gesture_history).most_common()
 
                 is_reboot = keypoint_classifier_labels[hand_sign_id] == 'Close' and handedness.classification[0].label[0:] == 'Right'
                 is_shutdown = keypoint_classifier_labels[hand_sign_id] == 'Close' and handedness.classification[0].label[0:] == 'Left'
@@ -163,13 +141,8 @@ def main():
                     brect,
                     handedness,
                     keypoint_classifier_labels[hand_sign_id],
-                    point_history_classifier_labels[most_common_fg_id[0][0]],
                     gesture_control_dict
                 )
-        else:
-            point_history.append([0, 0])
-
-        debug_image = draw_point_history(debug_image, point_history)
 
         cv.imshow('Hand Gesture Recognition', debug_image)
 
@@ -232,27 +205,6 @@ def pre_process_landmark(landmark_list):
     temp_landmark_list = list(map(normalize_, temp_landmark_list))
 
     return temp_landmark_list
-
-
-def pre_process_point_history(image, point_history):
-    image_width, image_height = image.shape[1], image.shape[0]
-
-    temp_point_history = copy.deepcopy(point_history)
-
-    base_x, base_y = 0, 0
-    for index, point in enumerate(temp_point_history):
-        if index == 0:
-            base_x, base_y = point[0], point[1]
-
-        temp_point_history[index][0] = (temp_point_history[index][0] -
-                                        base_x) / image_width
-        temp_point_history[index][1] = (temp_point_history[index][1] -
-                                        base_y) / image_height
-
-    temp_point_history = list(
-        itertools.chain.from_iterable(temp_point_history))
-
-    return temp_point_history
 
 
 def draw_landmarks(image, landmark_point):
@@ -396,7 +348,7 @@ def draw_landmarks(image, landmark_point):
             cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
                       -1)
             cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
-        if index == 12:  # 中指：指先
+        if index == 12:
             cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
                       -1)
             cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
@@ -448,12 +400,14 @@ def do_volume_increase():
     mixer = alsaaudio.Mixer()
     newvolume = mixer.getvolume()[0] + 1 if mixer.getvolume()[0] + 1 <= 100 else 100
     mixer.setvolume(newvolume)
+    mixer.setmute(0)
 
 
 def do_volume_decrease():
     mixer = alsaaudio.Mixer()
     newvolume = mixer.getvolume()[0] - 1 if mixer.getvolume()[0] - 1 >= 0 else 0
     mixer.setvolume(newvolume)
+    mixer.setmute(0)
 
 
 def do_reboot():
@@ -466,7 +420,7 @@ def do_shutdown():
     os.system('systemctl poweroff')
 
 
-def draw_info_text(image, brect, handedness, hand_sign_text, finger_gesture_text, gesture_control_dict):
+def draw_info_text(image, brect, handedness, hand_sign_text, gesture_control_dict):
     cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
                  (0, 0, 0), -1)
 
@@ -477,15 +431,6 @@ def draw_info_text(image, brect, handedness, hand_sign_text, finger_gesture_text
         info_text = info_text + ':' + hand_sign_text
     cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
                cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv.LINE_AA)
-
-    return image
-
-
-def draw_point_history(image, point_history):
-    for index, point in enumerate(point_history):
-        if point[0] != 0 and point[1] != 0:
-            cv.circle(image, (point[0], point[1]), 1 + int(index / 2),
-                      (152, 251, 152), 2)
 
     return image
 
